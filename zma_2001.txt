@@ -1,0 +1,142 @@
+REPORT zma_2001.
+
+*---------------------------------------------------------------------*
+* Selection Screen
+*---------------------------------------------------------------------*
+TABLES: ekko, ekpo.
+
+SELECT-OPTIONS:
+  s_ebeln FOR ekko-ebeln,
+  s_lifnr FOR ekko-lifnr,
+  s_bedat FOR ekko-bedat,
+  s_matnr FOR ekpo-matnr.
+
+*---------------------------------------------------------------------*
+* Types
+*---------------------------------------------------------------------*
+TYPES: BEGIN OF ty_po,
+         ebeln TYPE ekko-ebeln,
+         ebelp TYPE ekpo-ebelp,
+         bedat TYPE ekko-bedat,
+         lifnr TYPE ekko-lifnr,
+         name1 TYPE lfa1-name1,
+         bsart TYPE ekko-bsart,
+         matnr TYPE ekpo-matnr,
+         txz01 TYPE ekpo-txz01,
+         menge TYPE ekpo-menge,
+         meins TYPE ekpo-meins,
+         netpr TYPE ekpo-netpr,
+         peinh TYPE ekpo-peinh,
+         werks TYPE ekpo-werks,
+         lgort TYPE ekpo-lgort,
+         loekz TYPE ekpo-loekz,
+       END OF ty_po.
+
+*---------------------------------------------------------------------*
+* Data
+*---------------------------------------------------------------------*
+DATA: gt_po  TYPE STANDARD TABLE OF ty_po,
+      go_alv TYPE REF TO cl_salv_table.
+
+*---------------------------------------------------------------------*
+* Start of Selection
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  PERFORM get_data.
+
+  IF gt_po IS INITIAL.
+    MESSAGE 'No purchase order data found' TYPE 'I'.
+    RETURN.
+  ENDIF.
+
+  PERFORM display_alv.
+
+*---------------------------------------------------------------------*
+* Retrieve Purchase Order and Vendor Data
+*---------------------------------------------------------------------*
+FORM get_data.
+
+  SELECT
+    h~ebeln,
+    i~ebelp,
+    h~bedat,
+    h~lifnr,
+    v~name1,
+    h~bsart,
+    i~matnr,
+    i~txz01,
+    i~menge,
+    i~meins,
+    i~netpr,
+    i~peinh,
+    i~werks,
+    i~lgort,
+    i~loekz
+    FROM ekko AS h
+    INNER JOIN ekpo AS i
+      ON i~ebeln = h~ebeln
+    LEFT OUTER JOIN lfa1 AS v
+      ON v~lifnr = h~lifnr
+    WHERE h~ebeln IN @s_ebeln
+      AND h~lifnr IN @s_lifnr
+      AND h~bedat IN @s_bedat
+      AND i~matnr IN @s_matnr
+    INTO CORRESPONDING FIELDS OF TABLE @gt_po.
+
+ENDFORM.
+
+*---------------------------------------------------------------------*
+* Display ALV
+*---------------------------------------------------------------------*
+FORM display_alv.
+
+  TRY.
+
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = go_alv
+        CHANGING
+          t_table      = gt_po ).
+
+      "Enable standard ALV toolbar functions
+      go_alv->get_functions( )->set_all( abap_true ).
+
+      "Enable column optimization
+      go_alv->get_columns( )->set_optimize( abap_true ).
+
+      "Enable striped rows
+      go_alv->get_display_settings( )->set_striped_pattern(
+        abap_true ).
+
+      "Set report title
+      go_alv->get_display_settings( )->set_list_header(
+        'Purchase Order ALV Report' ).
+
+      "Enable sorting, filtering and layout variants
+      go_alv->get_sorts( )->add_sort(
+        columnname = 'EBELN' ).
+
+      go_alv->get_sorts( )->add_sort(
+        columnname = 'EBELP' ).
+
+      go_alv->get_layout( )->set_key(
+        VALUE salv_s_layout_key(
+          report = sy-repid ) ).
+
+      go_alv->get_layout( )->set_save_restriction(
+        if_salv_c_layout=>restrict_none ).
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_salv).
+
+      MESSAGE lx_salv->get_text( ) TYPE 'I'.
+
+    CATCH cx_salv_not_found INTO DATA(lx_not_found).
+
+      MESSAGE lx_not_found->get_text( ) TYPE 'I'.
+
+  ENDTRY.
+
+ENDFORM.
